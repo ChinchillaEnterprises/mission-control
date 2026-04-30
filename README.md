@@ -1,6 +1,6 @@
 # Mission Control
 
-AI Operations Command Center for BeonIQ — Intelligent orchestration layer for Marta's agent network.
+AI Operations Command Center for BeonIQ — Real-time visibility into customer deployments, agent orchestration, and platform health.
 
 ## Vision
 
