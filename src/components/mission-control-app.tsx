@@ -77,13 +77,15 @@ type Risk = {
 type Agent = {
   id: string
   name: string
-  type: "pm" | "data-lead" | "bi-lead" | "ds-lead" | "worker"
-  status: "idle" | "working" | "blocked" | "error"
+  type: "orchestrator" | "data-processor" | "ai-analyzer" | "reporter" | "monitor"
+  functionName: string
+  status: "idle" | "running" | "error" | "throttled"
   currentTask?: string
   customer?: string
   lastActivity: string
   successRate: number
-  tasksCompleted: number
+  invocations: number
+  errorCount: number
 }
 
 type Dependency = {
@@ -133,123 +135,39 @@ const viewOptions: {
   },
 ]
 
-// Mock data
-const mockCustomers: Customer[] = [
-  {
-    id: "kgpco",
-    name: "KGPCO",
-    code: "KGP01",
-    launchDate: "2026-05-06",
-    status: "training",
-    progress: 75,
-    dataFreshness: 98,
-    blockers: 2,
-    owner: "Marta",
-    priority: "critical"
-  },
-  {
-    id: "walgreens",
-    name: "Walgreens",
-    code: "WAL01",
-    launchDate: "2026-05-15",
-    status: "building",
-    progress: 45,
-    dataFreshness: 85,
-    blockers: 5,
-    owner: "Marta",
-    priority: "high"
-  },
-  {
-    id: "ceva",
-    name: "CEVA Logistics",
-    code: "CEV01",
-    launchDate: "2026-06-01",
-    status: "planning",
-    progress: 20,
-    dataFreshness: 92,
-    blockers: 1,
-    owner: "Jim",
-    priority: "medium"
-  },
-]
+// Real-time data fetching from BeonIQ API
+const fetchCustomers = async (): Promise<Customer[]> => {
+  try {
+    const response = await fetch('/api/customers')
+    if (!response.ok) throw new Error('Failed to fetch')
+    return await response.json()
+  } catch (error) {
+    console.error('Failed to fetch customers:', error)
+    return []
+  }
+}
 
-const mockRisks: Risk[] = [
-  {
-    id: "r1",
-    customer: "KGPCO",
-    type: "training",
-    severity: "high",
-    description: "CS team training scheduled too close to launch",
-    predictedImpact: "60% chance of delayed user adoption",
-    suggestedAction: "Schedule additional training session this week",
-    daysUntilImpact: 3
-  },
-  {
-    id: "r2",
-    customer: "Walgreens",
-    type: "dependency",
-    severity: "critical",
-    description: "Data pipeline blocked by missing TMS credentials",
-    predictedImpact: "Launch will be delayed by 1 week",
-    suggestedAction: "Escalate to Mohsen for TMS access immediately",
-    daysUntilImpact: 0
-  },
-  {
-    id: "r3",
-    customer: "Walgreens",
-    type: "data",
-    severity: "medium",
-    description: "Invoice data freshness dropping below threshold",
-    predictedImpact: "Daily summaries will show stale data",
-    suggestedAction: "Trigger manual refresh via Databricks",
-    daysUntilImpact: 7
-  },
-]
+const fetchAgents = async (): Promise<Agent[]> => {
+  try {
+    const response = await fetch('/api/agents')
+    if (!response.ok) throw new Error('Failed to fetch')
+    return await response.json()
+  } catch (error) {
+    console.error('Failed to fetch agents:', error)
+    return []
+  }
+}
 
-const mockAgents: Agent[] = [
-  {
-    id: "chia",
-    name: "Chia (PM Agent)",
-    type: "pm",
-    status: "working",
-    currentTask: "Orchestrating KGPCO launch preparations",
-    customer: "KGPCO",
-    lastActivity: "2 min ago",
-    successRate: 94,
-    tasksCompleted: 127
-  },
-  {
-    id: "marcus",
-    name: "Marcus (Data Lead)",
-    type: "data-lead",
-    status: "working",
-    currentTask: "Validating Walgreens company code mappings",
-    customer: "Walgreens",
-    lastActivity: "5 min ago",
-    successRate: 89,
-    tasksCompleted: 83
-  },
-  {
-    id: "chisel",
-    name: "Chisel (BI Lead)",
-    type: "bi-lead",
-    status: "blocked",
-    currentTask: "Generating executive dashboard",
-    customer: "KGPCO",
-    lastActivity: "15 min ago",
-    successRate: 91,
-    tasksCompleted: 64
-  },
-  {
-    id: "data-cleaner",
-    name: "Data Cleaning Agent",
-    type: "worker",
-    status: "idle",
-    lastActivity: "1 hour ago",
-    successRate: 97,
-    tasksCompleted: 412
-  },
-]
+const fetchRisks = async (): Promise<Risk[]> => {
+  try {
+    const response = await fetch('/api/risks')
+    if (!response.ok) throw new Error('Failed to fetch')
+    return await response.json()
+  } catch (error) {
+    console.error('Failed to fetch risks:', error)
+    return []
+  }
+}
 
 export function MissionControlApp() {
   const [viewMode, setViewMode] = React.useState<ViewMode>("mission")
@@ -257,10 +175,41 @@ export function MissionControlApp() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = React.useState(false)
   const [isRefreshing, setIsRefreshing] = React.useState(false)
 
+  // Real data states
+  const [customers, setCustomers] = React.useState<Customer[]>([])
+  const [agents, setAgents] = React.useState<Agent[]>([])
+  const [risks, setRisks] = React.useState<Risk[]>([])
+  const [isLoading, setIsLoading] = React.useState(true)
+
+  // Fetch real data on mount
+  React.useEffect(() => {
+    loadData()
+    // Refresh every 30 seconds
+    const interval = setInterval(loadData, 30000)
+    return () => clearInterval(interval)
+  }, [])
+
+  async function loadData() {
+    setIsLoading(true)
+    try {
+      const [customersData, agentsData, risksData] = await Promise.all([
+        fetchCustomers(),
+        fetchAgents(),
+        fetchRisks()
+      ])
+      setCustomers(customersData)
+      setAgents(agentsData)
+      setRisks(risksData)
+    } catch (error) {
+      console.error('Failed to load data:', error)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
   async function handleRefresh() {
     setIsRefreshing(true)
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1500))
+    await loadData()
     setIsRefreshing(false)
   }
 
@@ -408,19 +357,19 @@ export function MissionControlApp() {
         </header>
 
         <ScrollArea className="flex-1">
-          {viewMode === "mission" && <MissionView query={query} />}
-          {viewMode === "risk" && <RiskRadarView query={query} />}
-          {viewMode === "agents" && <AgentActivityView query={query} />}
+          {viewMode === "mission" && <MissionView customers={customers} query={query} />}
+          {viewMode === "risk" && <RiskRadarView risks={risks} query={query} />}
+          {viewMode === "agents" && <AgentActivityView agents={agents} query={query} />}
           {viewMode === "dependencies" && <DependencyWebView query={query} />}
-          {viewMode === "health" && <CustomerHealthView query={query} />}
+          {viewMode === "health" && <CustomerHealthView customers={customers} query={query} />}
         </ScrollArea>
       </main>
     </div>
   )
 }
 
-function MissionView({ query }: { query: string }) {
-  const filteredCustomers = mockCustomers.filter(c =>
+function MissionView({ customers, query }: { customers: Customer[], query: string }) {
+  const filteredCustomers = customers.filter(c =>
     c.name.toLowerCase().includes(query.toLowerCase()) ||
     c.code.toLowerCase().includes(query.toLowerCase())
   )
@@ -519,8 +468,8 @@ function MissionView({ query }: { query: string }) {
   )
 }
 
-function RiskRadarView({ query }: { query: string }) {
-  const filteredRisks = mockRisks.filter(r =>
+function RiskRadarView({ risks, query }: { risks: Risk[], query: string }) {
+  const filteredRisks = risks.filter(r =>
     r.customer.toLowerCase().includes(query.toLowerCase()) ||
     r.description.toLowerCase().includes(query.toLowerCase())
   )
@@ -617,14 +566,14 @@ function RiskRadarView({ query }: { query: string }) {
   )
 }
 
-function AgentActivityView({ query }: { query: string }) {
-  const filteredAgents = mockAgents.filter(a =>
+function AgentActivityView({ agents, query }: { agents: Agent[], query: string }) {
+  const filteredAgents = agents.filter(a =>
     a.name.toLowerCase().includes(query.toLowerCase()) ||
     (a.currentTask?.toLowerCase().includes(query.toLowerCase()) ?? false)
   )
 
-  const workingCount = filteredAgents.filter(a => a.status === "working").length
-  const blockedCount = filteredAgents.filter(a => a.status === "blocked").length
+  const runningCount = filteredAgents.filter(a => a.status === "running").length
+  const errorCount = filteredAgents.filter(a => a.status === "error" || a.status === "throttled").length
 
   return (
     <div className="p-6">
@@ -634,11 +583,11 @@ function AgentActivityView({ query }: { query: string }) {
           <p className="text-gray-400">AI agent orchestration and task monitoring</p>
           <div className="flex gap-3">
             <Badge className="bg-green-500/20 text-green-400">
-              {workingCount} Working
+              {runningCount} Running
             </Badge>
-            {blockedCount > 0 && (
+            {errorCount > 0 && (
               <Badge variant="destructive" className="bg-red-500/20 text-red-400">
-                {blockedCount} Blocked
+                {errorCount} Issues
               </Badge>
             )}
           </div>
@@ -652,20 +601,21 @@ function AgentActivityView({ query }: { query: string }) {
               <div className="flex items-start justify-between">
                 <div>
                   <CardTitle className="text-white flex items-center gap-2">
-                    {agent.type === "pm" && <BrainIcon className="size-5 text-purple-400" />}
-                    {agent.type === "data-lead" && <ChartLineIcon className="size-5 text-blue-400" />}
-                    {agent.type === "bi-lead" && <GraphIcon className="size-5 text-green-400" />}
-                    {agent.type === "worker" && <CirclesFourIcon className="size-5 text-gray-400" />}
+                    {agent.type === "orchestrator" && <BrainIcon className="size-5 text-purple-400" />}
+                    {agent.type === "data-processor" && <ChartLineIcon className="size-5 text-blue-400" />}
+                    {agent.type === "ai-analyzer" && <LightningIcon className="size-5 text-yellow-400" />}
+                    {agent.type === "monitor" && <HeartbeatIcon className="size-5 text-green-400" />}
+                    {agent.type === "reporter" && <GraphIcon className="size-5 text-cyan-400" />}
                     {agent.name}
                   </CardTitle>
                 </div>
                 <Badge
                   variant="outline"
                   className={cn(
-                    agent.status === "working" && "border-green-500/50 text-green-400",
+                    agent.status === "running" && "border-green-500/50 text-green-400",
                     agent.status === "idle" && "border-gray-600 text-gray-400",
-                    agent.status === "blocked" && "border-red-500/50 text-red-400",
-                    agent.status === "error" && "border-red-500/50 text-red-400"
+                    agent.status === "error" && "border-red-500/50 text-red-400",
+                    agent.status === "throttled" && "border-orange-500/50 text-orange-400"
                   )}
                 >
                   {agent.status}
@@ -699,7 +649,7 @@ function AgentActivityView({ query }: { query: string }) {
                 </div>
                 <div>
                   <div className="text-xs text-gray-500">Tasks</div>
-                  <div className="text-white font-medium mt-1">{agent.tasksCompleted}</div>
+                  <div className="text-white font-medium mt-1">{agent.invocations}</div>
                 </div>
               </div>
 
@@ -708,9 +658,9 @@ function AgentActivityView({ query }: { query: string }) {
                   <ClockAfternoonIcon className="size-3 inline mr-1" />
                   {agent.lastActivity}
                 </span>
-                {agent.status === "blocked" && (
+                {agent.status === "error" && (
                   <Button size="sm" className="h-6 text-xs bg-red-500/20 text-red-400 hover:bg-red-500/30">
-                    Unblock
+                    View Logs
                   </Button>
                 )}
               </div>
@@ -749,8 +699,8 @@ function DependencyWebView({ query }: { query: string }) {
   )
 }
 
-function CustomerHealthView({ query }: { query: string }) {
-  const filteredCustomers = mockCustomers.filter(c =>
+function CustomerHealthView({ customers, query }: { customers: Customer[], query: string }) {
+  const filteredCustomers = customers.filter(c =>
     c.name.toLowerCase().includes(query.toLowerCase()) ||
     c.code.toLowerCase().includes(query.toLowerCase())
   )
