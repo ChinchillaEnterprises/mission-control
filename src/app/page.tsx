@@ -1,5 +1,5 @@
-import { AgentKanbanApp } from "@/components/agent-kanban-app"
+import { MissionControlApp } from "@/components/mission-control-app"
 
 export default function Home() {
-  return <AgentKanbanApp />
+  return <MissionControlApp />
 }
